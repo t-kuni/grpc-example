@@ -9,7 +9,7 @@ package chat;
 service Chat {
   rpc Join(Profile) returns (User) {}
   rpc SendComment(Comment) returns (google.protobuf.Empty) {}
-  rpc WatchLatestComments(google.protobuf.Empty) returns (stream Comments) {}
+  rpc WatchState(google.protobuf.Empty) returns (stream State) {}
 }
 
 enum Gender {
@@ -35,4 +35,9 @@ message Comment {
 
 message Comments {
   repeated Comment comments = 1;
+}
+
+message State {
+  repeated User joinedUsers = 1;
+  repeated Comment latestComments = 2;
 }
