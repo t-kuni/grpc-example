@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+option go_package = "google.com/t-kuni/grpc-example/grpc/chat";
+
+package chat;
+
+service Chat {
+  rpc Join(Profile) returns (User) {}
+  rpc SendComment(Comment) returns (google.protobuf.Empty) {}
+  rpc WatchLatestComments(google.protobuf.Empty) returns (stream Comments) {}
+}
+
+enum Gender {
+  GENDER_MAN = 0;
+  GENDER_WOMAN = 1;
+}
+
+message User {
+  string id = 1;
+  Profile profile = 2;
+}
+
+message Profile {
+  string name = 1;
+  int32 age = 2;
+  Gender gender = 3;
+}
+
+message Comment {
+  string body = 1;
+  User commenter = 2;
+}
+
+message Comments {
+  repeated Comment comments = 1;
+}
