@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
-	"github.com/samber/lo"
 	"github.com/t-kuni/grpc-example/grpc/chat"
 	"google.golang.org/grpc"
 	"log"
 	"net"
-	"strings"
 	"sync"
 )
 
@@ -19,7 +17,8 @@ type chatServer struct {
 
 	*joinedUsers
 	*latestComments
-	stateWatcher *stateWatcherType
+	stateWatcher  *stateWatcherType
+	colorSequence *colorSequenceType
 }
 
 type stateWatcherType struct {
@@ -50,6 +49,30 @@ func (s chatServer) makeState() *chat.State {
 		JoinedUsers:    s.joinedUsers.joinedUsers,
 		LatestComments: s.latestComments.comments,
 	}
+}
+
+type colorSequenceType struct {
+	next uint32
+	mu   *sync.Mutex
+}
+
+func newColorSequenceType() *colorSequenceType {
+	mu := new(sync.Mutex)
+	return &colorSequenceType{
+		mu:   mu,
+		next: 0,
+	}
+}
+
+func (c *colorSequenceType) Get() uint32 {
+	c.mu.Lock()
+	sec := c.next
+	c.next++
+	if c.next > 5 {
+		c.next = 0
+	}
+	c.mu.Unlock()
+	return sec
 }
 
 type joinedUsers struct {
@@ -83,20 +106,31 @@ func (s chatServer) Join(ctx context.Context, profile *chat.Profile) (*chat.User
 	user := &chat.User{
 		Id:      uuid.New().String(),
 		Profile: profile,
+		Color:   s.colorSequence.Get(),
 	}
 	s.joinedUsers.addUser(user)
 
+	systemComment := &chat.Comment{
+		Body:            fmt.Sprintf("%s has entered the room.", user.Profile.Name),
+		Commenter:       nil,
+		IsSystemComment: true,
+	}
+	s.addComment(systemComment)
+
 	s.stateWatcher.Broadcast()
-	s.render()
+
+	log.Printf("Join user. Name: %s", profile.Name)
 
 	return user, nil
 }
 
 func (s chatServer) SendComment(ctx context.Context, comment *chat.Comment) (*empty.Empty, error) {
+	comment.IsSystemComment = false
 	s.latestComments.addComment(comment)
 
+	log.Printf("Send comment. Name: %s, Comment: %s", comment.Commenter.Profile.Name, comment.Body)
+
 	s.stateWatcher.Broadcast()
-	s.render()
 
 	return &empty.Empty{}, nil
 }
@@ -111,38 +145,10 @@ func (s chatServer) WatchState(_ *empty.Empty, stream chat.Chat_WatchStateServer
 	}
 }
 
-func (s chatServer) render() error {
-	//fmt.Print("\033[u\033[K") // restore the cursor position and clear the line
-	fmt.Print("\033[H\033[2J")
-
-	fmt.Println("State: Running")
-
-	userNameList := lo.Map[*chat.User, string](s.joinedUsers.joinedUsers, func(user *chat.User, index int) string {
-		return user.Profile.Name
-	})
-
-	userNameText := strings.Join(userNameList, ", ")
-
-	fmt.Println("Joined Users: " + userNameText)
-
-	commentBodyList := lo.Map[*chat.Comment, string](s.latestComments.comments, func(comment *chat.Comment, index int) string {
-		return fmt.Sprintf("[%s] %s", comment.Commenter.Profile.Name, comment.Body)
-	})
-
-	commentText := strings.Join(commentBodyList, "\n")
-
-	fmt.Println(commentText)
-
-	return nil
-}
-
-func (s chatServer) prepareRendering() {
-	fmt.Print("\033[s") // save the cursor position
-	fmt.Print("\033[H\033[2J")
-}
-
 func main() {
 	port := 30000
+
+	fmt.Print("\033[H\033[2J") // コンソールをクリア
 
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
@@ -155,10 +161,11 @@ func main() {
 		joinedUsers:    &joinedUsers{},
 		latestComments: &latestComments{},
 		stateWatcher:   newStateWatcher(),
+		colorSequence:  newColorSequenceType(),
 	}
 	chat.RegisterChatServer(grpcServer, server)
 
-	server.render()
+	log.Printf("Start server listening on port %d.", port)
 
 	err = grpcServer.Serve(lis)
 	if err != nil {

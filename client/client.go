@@ -94,12 +94,13 @@ func watchState() {
 }
 
 type model struct {
-	nameView       viewport.Model
-	joinedUserView viewport.Model
-	commentView    viewport.Model
-	textInput      textinput.Model
-	senderStyle    lipgloss.Style
-	err            error
+	nameView           viewport.Model
+	joinedUserView     viewport.Model
+	commentView        viewport.Model
+	textInput          textinput.Model
+	senderStyles       []lipgloss.Style
+	systemCommentStyle lipgloss.Style
+	err                error
 }
 
 func initialModel() model {
@@ -125,8 +126,16 @@ func initialModel() model {
 		joinedUserView: joinedUserView,
 		textInput:      ti,
 		commentView:    commentView,
-		senderStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
-		err:            nil,
+		senderStyles: []lipgloss.Style{
+			lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("3")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("4")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
+		},
+		systemCommentStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")),
+		err:                nil,
 	}
 }
 
@@ -165,13 +174,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case stateUpdatedMsg:
 		joinedUserTexts := lo.Map[*chat.User, string](state.JoinedUsers, func(item *chat.User, index int) string {
-			return item.Profile.Name
+			style := m.senderStyles[item.Color]
+			return style.Render(item.Profile.Name)
 		})
 		m.joinedUserView.SetContent("Members: " + strings.Join(joinedUserTexts, ", "))
 
 		commentTexts := lo.Map[*chat.Comment, string](state.LatestComments, func(comment *chat.Comment, index int) string {
-			name := comment.Commenter.Profile.Name
-			return m.senderStyle.Render(name+": ") + comment.Body
+			if comment.IsSystemComment {
+				return m.systemCommentStyle.Render(comment.Body)
+			} else {
+				name := comment.Commenter.Profile.Name
+				style := m.senderStyles[comment.Commenter.Color]
+				return style.Render(name+": ") + comment.Body
+			}
 		})
 		m.commentView.SetContent(strings.Join(commentTexts, "\n"))
 

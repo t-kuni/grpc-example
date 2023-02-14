@@ -20,6 +20,7 @@ enum Gender {
 message User {
   string id = 1;
   Profile profile = 2;
+  uint32 color = 3;
 }
 
 message Profile {
@@ -31,6 +32,7 @@ message Profile {
 message Comment {
   string body = 1;
   User commenter = 2;
+  bool isSystemComment = 3;
 }
 
 message Comments {
