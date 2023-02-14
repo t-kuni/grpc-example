@@ -14,15 +14,35 @@ import (
 	"sync"
 )
 
-var (
-	stateUpdated chan int
-)
-
 type chatServer struct {
 	chat.UnimplementedChatServer
 
 	*joinedUsers
 	*latestComments
+	stateWatcher *stateWatcherType
+}
+
+type stateWatcherType struct {
+	mu *sync.Mutex
+	c  *sync.Cond
+}
+
+func newStateWatcher() *stateWatcherType {
+	mu := new(sync.Mutex)
+	return &stateWatcherType{
+		mu: mu,
+		c:  sync.NewCond(mu),
+	}
+}
+
+func (s stateWatcherType) Wait() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.c.Wait()
+}
+
+func (s stateWatcherType) Broadcast() {
+	s.c.Broadcast()
 }
 
 func (s chatServer) makeState() *chat.State {
@@ -41,8 +61,6 @@ func (u *joinedUsers) addUser(user *chat.User) {
 	u.mu.Lock()
 	u.joinedUsers = append(u.joinedUsers, user)
 	u.mu.Unlock()
-
-	stateUpdated <- 0
 }
 
 type latestComments struct {
@@ -59,8 +77,6 @@ func (u *latestComments) addComment(comment *chat.Comment) {
 	}
 
 	u.mu.Unlock()
-
-	stateUpdated <- 0
 }
 
 func (s chatServer) Join(ctx context.Context, profile *chat.Profile) (*chat.User, error) {
@@ -70,6 +86,7 @@ func (s chatServer) Join(ctx context.Context, profile *chat.Profile) (*chat.User
 	}
 	s.joinedUsers.addUser(user)
 
+	s.stateWatcher.Broadcast()
 	s.render()
 
 	return user, nil
@@ -78,6 +95,7 @@ func (s chatServer) Join(ctx context.Context, profile *chat.Profile) (*chat.User
 func (s chatServer) SendComment(ctx context.Context, comment *chat.Comment) (*empty.Empty, error) {
 	s.latestComments.addComment(comment)
 
+	s.stateWatcher.Broadcast()
 	s.render()
 
 	return &empty.Empty{}, nil
@@ -89,10 +107,7 @@ func (s chatServer) WatchState(_ *empty.Empty, stream chat.Chat_WatchStateServer
 		if err != nil {
 			return err
 		}
-		select {
-		case <-stateUpdated:
-			log.Print("stateUpdated")
-		}
+		s.stateWatcher.Wait()
 	}
 }
 
@@ -127,8 +142,6 @@ func (s chatServer) prepareRendering() {
 }
 
 func main() {
-	stateUpdated = make(chan int, 10)
-
 	port := 30000
 
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
@@ -141,6 +154,7 @@ func main() {
 	server := chatServer{
 		joinedUsers:    &joinedUsers{},
 		latestComments: &latestComments{},
+		stateWatcher:   newStateWatcher(),
 	}
 	chat.RegisterChatServer(grpcServer, server)
 
