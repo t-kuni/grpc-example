@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"github.com/t-kuni/grpc-example/grpc/chat"
 	"google.golang.org/grpc"
 	"log"
@@ -86,6 +87,14 @@ func (u *joinedUsers) addUser(user *chat.User) {
 	u.mu.Unlock()
 }
 
+func (u *joinedUsers) deleteUser(user *chat.User) {
+	u.mu.Lock()
+	u.joinedUsers = lo.Filter[*chat.User](u.joinedUsers, func(item *chat.User, index int) bool {
+		return item.Id != user.Id
+	})
+	u.mu.Unlock()
+}
+
 type latestComments struct {
 	comments []*chat.Comment
 	mu       sync.Mutex
@@ -122,6 +131,23 @@ func (s chatServer) Join(ctx context.Context, profile *chat.Profile) (*chat.User
 	log.Printf("Join user. Name: %s", profile.Name)
 
 	return user, nil
+}
+
+func (s chatServer) Leave(ctx context.Context, user *chat.User) (*empty.Empty, error) {
+	s.joinedUsers.deleteUser(user)
+
+	systemComment := &chat.Comment{
+		Body:            fmt.Sprintf("%s has left the room.", user.Profile.Name),
+		Commenter:       nil,
+		IsSystemComment: true,
+	}
+	s.addComment(systemComment)
+
+	s.stateWatcher.Broadcast()
+
+	log.Printf("Leave user. Name: %s", user.Profile.Name)
+
+	return &empty.Empty{}, nil
 }
 
 func (s chatServer) SendComment(ctx context.Context, comment *chat.Comment) (*empty.Empty, error) {

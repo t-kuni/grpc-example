@@ -15,7 +15,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"io"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 )
 
 var (
@@ -34,6 +37,15 @@ type (
 func main() {
 	port := 30000
 	ctx = context.Background()
+
+	quit := make(chan os.Signal)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-quit
+		client.Leave(ctx, user)
+		os.Exit(1)
+	}()
 
 	fmt.Print("\033[H\033[2J") // コンソールをクリア
 
@@ -156,10 +168,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
-			fmt.Println(m.textInput.Value())
+			if user != nil {
+				client.Leave(ctx, user)
+			}
 			return m, tea.Quit
 		case tea.KeyEnter:
-			commentBody := m.textInput.Value()
+			commentBody := strings.TrimSpace(m.textInput.Value())
+			if commentBody == "" {
+				break
+			}
+
 			m.textInput.Reset()
 
 			comment := &chat.Comment{

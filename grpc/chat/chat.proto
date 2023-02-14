@@ -8,6 +8,7 @@ package chat;
 
 service Chat {
   rpc Join(Profile) returns (User) {}
+  rpc Leave(User) returns (google.protobuf.Empty) {}
   rpc SendComment(Comment) returns (google.protobuf.Empty) {}
   rpc WatchState(google.protobuf.Empty) returns (stream State) {}
 }
