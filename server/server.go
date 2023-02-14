@@ -14,11 +14,22 @@ import (
 	"sync"
 )
 
+var (
+	stateUpdated chan int
+)
+
 type chatServer struct {
 	chat.UnimplementedChatServer
 
 	*joinedUsers
 	*latestComments
+}
+
+func (s chatServer) makeState() *chat.State {
+	return &chat.State{
+		JoinedUsers:    s.joinedUsers.joinedUsers,
+		LatestComments: s.latestComments.comments,
+	}
 }
 
 type joinedUsers struct {
@@ -30,6 +41,8 @@ func (u *joinedUsers) addUser(user *chat.User) {
 	u.mu.Lock()
 	u.joinedUsers = append(u.joinedUsers, user)
 	u.mu.Unlock()
+
+	stateUpdated <- 0
 }
 
 type latestComments struct {
@@ -46,6 +59,8 @@ func (u *latestComments) addComment(comment *chat.Comment) {
 	}
 
 	u.mu.Unlock()
+
+	stateUpdated <- 0
 }
 
 func (s chatServer) Join(ctx context.Context, profile *chat.Profile) (*chat.User, error) {
@@ -66,6 +81,19 @@ func (s chatServer) SendComment(ctx context.Context, comment *chat.Comment) (*em
 	s.render()
 
 	return &empty.Empty{}, nil
+}
+
+func (s chatServer) WatchState(_ *empty.Empty, stream chat.Chat_WatchStateServer) error {
+	for {
+		err := stream.Send(s.makeState())
+		if err != nil {
+			return err
+		}
+		select {
+		case <-stateUpdated:
+			log.Print("stateUpdated")
+		}
+	}
 }
 
 func (s chatServer) render() error {
@@ -99,6 +127,8 @@ func (s chatServer) prepareRendering() {
 }
 
 func main() {
+	stateUpdated = make(chan int, 10)
+
 	port := 30000
 
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
