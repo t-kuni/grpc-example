@@ -2,6 +2,10 @@
 
 Samples with gRPC
 
+# Requirements
+
+* go 1.20
+
 # Usage
 
 ```bash
