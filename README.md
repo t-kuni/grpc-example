@@ -1,6 +1,6 @@
 # About
 
-Samples with gRPC
+Example using gRPC
 
 # Requirements
 
