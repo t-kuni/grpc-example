@@ -2,6 +2,9 @@
 
 Example using gRPC
 
+https://user-images.githubusercontent.com/7825234/219145859-59d38be9-194e-43ae-a1e5-8223fb73f86f.mp4
+
+
 # Requirements
 
 * go 1.20
